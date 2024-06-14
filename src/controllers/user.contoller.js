@@ -16,8 +16,7 @@ const registerUser = asyncHandler( async (req, res) => {
     // check for user creation
     // retrun response 
 
-    const {fullName, email, username, password} = req.body  // These details are coming from frontend 
-    console.log("email : ", email);
+    const {fullName, email, username, password} = req.body  // These details are coming from frontend
 
     // Check if any field is empty or not 
     if (
@@ -28,18 +27,19 @@ const registerUser = asyncHandler( async (req, res) => {
     }
 
     // check if user is already exist or not
-    const existedUser = User.findOne({
+    const existedUser = await User.findOne({
         $or: [{ username }, { email }] // if username or email already exist then
     })
-
-    console.log("existed user is : ",existedUser)
     if(existedUser) {
         throw new apiError(409, "User with email or username already exists")
     }
 
     
     const avatarLocalPath = req.files?.avatar[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage[0]?.path
+    let coverImageLocalPath;
+    if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
+        coverImageLocalPath = req.files.coverImage[0].path;
+    }
 
     // check if avatar is not 
     if(!avatarLocalPath){
