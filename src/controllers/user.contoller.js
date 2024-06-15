@@ -3,6 +3,24 @@ import { apiError } from '../utils/apiError.js';
 import { User } from '../models/user.model.js';
 import { uploadOnCloudinary } from '../utils/cloudinary.js';
 import { apiResponse } from '../utils/apiResponse.js';
+import { request, response } from 'express';
+
+const generateAccessAndRefreshTokens = async(userId) =>{
+    try{
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken()
+        const refreshToken = user.generateRefreshToken()
+
+        // Saving the refresh token in database
+        user.refreshToken = refreshToken
+        await user.save({validateBeforeSave: false}) // if save method call then it will kick the mongoose model
+
+        return {accessToken, refreshToken}
+
+    }catch(error){
+        throw new apiError(500, "Something went wrond while generating access and refresh tokens");
+    }
+}
 
 
 const registerUser = asyncHandler( async (req, res) => {
@@ -34,8 +52,11 @@ const registerUser = asyncHandler( async (req, res) => {
         throw new apiError(409, "User with email or username already exists")
     }
 
+    //TODO - Also apply the email validity also 
+
     
     const avatarLocalPath = req.files?.avatar[0]?.path;
+    console.log(req.files.avatar);
     let coverImageLocalPath;
     if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
         coverImageLocalPath = req.files.coverImage[0].path;
@@ -65,7 +86,7 @@ const registerUser = asyncHandler( async (req, res) => {
         username: username.toLowerCase()
     })
 
-    // if user object is created we will find it by an id and by defauld all are selected. We deslected the password and refreshToken 
+    // if user object is created we will find it by an id and by default all are selected. We deslected the password and refreshToken 
     const createdUser = await User.findById(user._id).select(
         "-password -refreshToken"
     )
@@ -80,4 +101,88 @@ const registerUser = asyncHandler( async (req, res) => {
     )
 })
 
-export { registerUser }
+
+const loginUser = asyncHandler( async(req, res) => {
+    // get details from the user
+    // check validation - not empty
+    // find the user
+    // password check
+    // access and refresh token generate 
+    // send cookie 
+
+    const { email, username, password} = req.body
+
+    if(!username || !email){
+        throw new apiError(400, "username or email is required")
+    }
+
+    const user = await User.findOne({
+        $or: [{ username}, {email}]
+    })
+
+    if(!user){
+        throw new apiError(404, "user does not exist");
+    }
+
+    const isPasswordValid = await user.isPasswordCorrect(password);
+
+    if(!isPasswordValid){
+        throw new apiError(401, "Password is not correct");
+    }
+
+    const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id)
+
+    const loggidInUser = await User.findById(user._id).select("-password -refreshToken")
+
+    // Now send cookies
+    // cookie can be modified by the frontend 
+    const options = {// Here we can modified the cookie through server only
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+        new apiResponse(
+            200,
+            {
+                user: loggidInUser, accessToken, refreshToken
+            },
+            "User logged in successfully"
+        )
+    )
+
+})
+
+const logoutUser = asyncHandler( async(req, res) => {
+    // if get the user _id then we delete its refresh token
+    // Here the main concept for how to bring this user we make a custom middleware function.
+    await User.findByIdAndUpdate(
+        req.user._id, // find the user by id
+        // What to update
+        {
+            $set: {
+                refreshToken: undefined
+            }
+        },
+        {
+            new: true
+        }
+    )
+
+    const options = {// Here we can modified the cookie through server only
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new apiResponse(200, {}, "User logged out"));
+})
+
+export { registerUser, loginUser, logoutUser }
