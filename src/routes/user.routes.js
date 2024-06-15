@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loginUser, logoutUser, registerUser } from "../controllers/user.contoller.js"; // I can import like this only if there is not export default
+import { loginUser, logoutUser, refreshAccessToken, registerUser } from "../controllers/user.contoller.js"; // I can import like this only if there is not export default
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
@@ -24,5 +24,7 @@ router.route("/login").post(loginUser) // Post method is used because you are ta
 
 // secured routes
 router.route("/logout").post(verifyJWT, logoutUser) // Here we give two functions to run the next function also we use next() at the end of the verifyJWT method
+
+router.route("/refresh-token").post(refreshAccessToken)
 
 export default router;

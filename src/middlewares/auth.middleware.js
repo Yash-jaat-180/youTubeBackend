@@ -1,7 +1,7 @@
-import { apiError } from "../utils/apiError";
-import { asyncHandler } from "../utils/asyncHandler";
+import { apiError } from "../utils/apiError.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken"
-import { User } from "../models/user.model";
+import { User } from "../models/user.model.js";
 
 
 // This is the function to find the user details 
@@ -10,9 +10,10 @@ import { User } from "../models/user.model";
 export const verifyJWT = asyncHandler(async(req, /*res*/_, next) => {
     try {
         const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")  // Because of cookie parser used in app.js. req have access of cookie
-    
+        // const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
+
         if(!token) {
-            throw new apiError(401, "Unauthorized request");
+            throw new apiError(401, "Unauthorized request could'nt get token");
         }
     
         const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
