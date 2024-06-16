@@ -4,7 +4,7 @@ import { User } from '../models/user.model.js';
 import { uploadOnCloudinary } from '../utils/cloudinary.js';
 import { apiResponse } from '../utils/apiResponse.js';
 import jwt from "jsonwebtoken"
-import { response } from 'express';
+import mongoose from 'mongoose';
 
 const generateAccessAndRefreshTokens = async(userId) =>{
     try{
@@ -22,7 +22,6 @@ const generateAccessAndRefreshTokens = async(userId) =>{
         throw new apiError(500, "Something went wrong while generating access and refresh tokens");
     }
 }
-
 
 const registerUser = asyncHandler( async (req, res) => {
     // get users details form the frontend
@@ -102,7 +101,6 @@ const registerUser = asyncHandler( async (req, res) => {
         new apiResponse(200, createdUser, "User registered successfully")
     )
 })
-
 
 const loginUser = asyncHandler( async(req, res) => {
     // get details from the user
@@ -253,7 +251,7 @@ const changeCurrentPassword = asyncHandler(async(req, res) => {
 const getCurrentUser = asyncHandler(async( req, res ) => {
     return res
     .status(200)
-    .json(200, req.user, "current user fetched successfully")
+    .json(new apiResponse(200, req.user, "current user fetched successfully"))
 })
 
 const updateAccountDetails = asyncHandler(async( req, res ) => {
@@ -341,4 +339,133 @@ const updateUserAvatar = asyncHandler(async(req, res) => {
     .json(200, user, "Avatar file updated successfully" );
 })
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage }
+const getUserChannalProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params // channal like chai aur code from the url we get the username 
+
+    if(!username?.trim()){
+        throw new apiError(400, "usernmae is missing in channal profile");
+    }
+
+    const channal = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase() // Find the username from the database 
+            }
+        },
+        {
+            // calculate the subscriber of a channal 
+            $lookup: {
+                from: "subscriptions", // model in which value lowercase and plural 
+                localField: "_id",
+                foreignField: "channal",
+                as: "subscribers" 
+            }
+        },
+        {
+            // calculate How many channal subscribed by this channal 
+            $lookup: {
+                from: "subscriptions", // model in whid value lowercase and plural 
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo" 
+            }
+        },
+        {
+            $addFields: {
+                subscribersCount: {
+                    $size: "$subscribers" // count the no. of documents and $ because it is a field 
+                },
+                channalsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                // find if channal is subscribed or not 
+                isSubscribed: {
+                    $cond: {
+                        if: {$in: [req.user?._id, "$subscribers.subscriber"]}, // Watch if i am in subscribers document 
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                fullName: 1,
+                username: 1,
+                subscribersCount: 1,
+                channalsSubscribedToCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1,
+                email: 1
+            }
+        }
+    ])
+
+    console.log("Channal is : ",channal);
+
+    if(!channal?.length){
+        throw new apiError(404, "channal does not exist");
+    }
+
+    return res
+    .status(200)
+    .json(
+        new apiResponse(200, channal[0], "User channal fethed successfully")
+    )
+})
+
+const getWatchHistory = asyncHandler(async(req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id) // in aggregation pipeline id direct goes it not automatically coverted by mongoose so that why we use here mongoose
+
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        username: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res
+    .status(200)
+    .json(
+        new apiResponse(200, user[0].watchHistory, "Watch History fetched successfully")
+    )
+})
+
+
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getUserChannalProfile, getWatchHistory }
