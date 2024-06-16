@@ -19,7 +19,7 @@ const generateAccessAndRefreshTokens = async(userId) =>{
         return {accessToken, refreshToken}
 
     }catch(error){
-        throw new apiError(500, "Something went wrond while generating access and refresh tokens");
+        throw new apiError(500, "Something went wrong while generating access and refresh tokens");
     }
 }
 
@@ -53,12 +53,13 @@ const registerUser = asyncHandler( async (req, res) => {
         throw new apiError(409, "User with email or username already exists")
     }
 
-    //TODO - Also apply the email validity also 
+    // TODO - Also apply the email validity also 
 
     
     const avatarLocalPath = req.files?.avatar[0]?.path;
     console.log(req.files.avatar);
     let coverImageLocalPath;
+    console.log(req.files.coverImage);
     if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0){
         coverImageLocalPath = req.files.coverImage[0].path;
     }
@@ -111,7 +112,7 @@ const loginUser = asyncHandler( async(req, res) => {
     // access and refresh token generate 
     // send cookie 
 
-    const { email, username, password} = req.body;
+    const { email, username, password } = req.body;
 
     if(!(email || username)){
         throw new apiError(400, "username or email is required");
@@ -231,4 +232,113 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     }
 })
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken }
+const changeCurrentPassword = asyncHandler(async(req, res) => {
+    const {oldPassword, newPassword} = req.body;
+
+    const user = await User.findById(req.user?._id) // because of auth middleware we can access the user in req 
+    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
+
+    if(!isPasswordCorrect){
+        throw new apiError(400, "Invalid old Password" );
+    }
+
+    user.password = newPassword;
+    await user.save({validateBeforeSave: false});
+    
+    return res
+    .status(200)
+    .json(new apiResponse(200, {}, "Password changed successfully"));
+})
+
+const getCurrentUser = asyncHandler(async( req, res ) => {
+    return res
+    .status(200)
+    .json(200, req.user, "current user fetched successfully")
+})
+
+const updateAccountDetails = asyncHandler(async( req, res ) => {
+    const {fullName, email } = req.body; // if you want to update the file then you should use different controllers so that we don't have to save data again and again;
+
+    if(!fullName && !email){
+        throw new apiError(400, "All fields are required");
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                fullName: fullName,
+                email: email
+            }
+        },
+        {
+            new: true
+        }
+    ).select("-password")
+
+    return res
+    .status(200)
+    .json(new apiResponse(200, user, "Account details updated successfully"))
+})
+
+const updateUserCoverImage = asyncHandler(async(req, res) => {
+    const coverImageLocalPath = req.file?.path
+
+    if (!coverImageLocalPath){
+        throw new apiError(400, "coverImage is missing");
+    }
+    
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
+    
+    if(!coverImage.url){
+        throw new apiError(400, "Error while uploading on avatar");
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+            coverImage: coverImage.url
+        }
+        },
+        {
+            new: true,
+        }
+    ).select('-password')
+
+    return res
+    .status(200)
+    .json(200, user , "Cover Image updated successfully" );
+})
+
+const updateUserAvatar = asyncHandler(async(req, res) => {
+    const avatarLocalPath = req.file?.path
+
+    if (!avatarLocalPath){
+        throw new apiError(400, "Avatar file is missing");
+    }
+    
+    const avatar = await uploadOnCloudinary(avatarLocalPath)
+    
+    if(!avatar.url){
+        throw new apiError(400, "Error while uploading on avatar");
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+            avatar: avatar.url
+        }
+        },
+        {
+            new: true,
+        }
+    ).select('-password')
+
+    return res
+    .status(200)
+    .json(200, user, "Avatar file updated successfully" );
+})
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage }
