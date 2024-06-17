@@ -164,8 +164,8 @@ const logoutUser = asyncHandler( async(req, res) => {
         req.user._id, // find the user by id
         // What to update
         {
-            $set: {
-                refreshToken: undefined
+            $unset: {
+                refreshToken: 1
             }
         },
         {
@@ -306,7 +306,9 @@ const updateUserCoverImage = asyncHandler(async(req, res) => {
 
     return res
     .status(200)
-    .json(200, user , "Cover Image updated successfully" );
+    .json(
+        new apiResponse(200, user , "Cover Image updated successfully" )
+    );
 })
 
 const updateUserAvatar = asyncHandler(async(req, res) => {
@@ -336,7 +338,9 @@ const updateUserAvatar = asyncHandler(async(req, res) => {
 
     return res
     .status(200)
-    .json(200, user, "Avatar file updated successfully" );
+    .json(
+        new apiResponse(200, user, "Avatar file updated successfully" )
+    );
 })
 
 const getUserChannalProfile = asyncHandler(async (req, res) => {
@@ -456,9 +460,11 @@ const getWatchHistory = asyncHandler(async(req, res) => {
                     }
                 ]
             }
-        }
+        },
+        
     ])
 
+    console.log("Watch history user is : \n", user)
     return res
     .status(200)
     .json(
