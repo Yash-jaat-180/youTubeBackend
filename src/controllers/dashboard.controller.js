@@ -8,7 +8,7 @@ import { apiResponse } from "../utils/apiResponse.js"
 
 const getChannelStats = asyncHandler(async (req, res) => {
     // TODO: Get the channel stats like total video views, total subscribers, total videos, total likes etc.
-    const userId = req.user._id
+    const userId = req.user?._id
     const totalVideoAndViews = await Video.aggregate([
         {
             $match: {
@@ -22,7 +22,7 @@ const getChannelStats = asyncHandler(async (req, res) => {
                     $sum: "$views",
                 },
                 totalVideos: {
-                    $sum: 1,
+                    $count: {},
                 },
             },
         },
@@ -61,7 +61,7 @@ const getChannelStats = asyncHandler(async (req, res) => {
         .json(
             new apiResponse(200, channalStats, "fetched channal stats successfully")
         )
-})
+});
 
 const getChannelVideos = asyncHandler(async (req, res) => {
     // TODO: Get all the videos uploaded by the channel

@@ -1,4 +1,4 @@
-import mongoose, { isValidObjectId } from "mongoose";
+import mongoose, { isValidObjectId, Mongoose } from "mongoose";
 import { Video } from "../models/video.model.js"
 import { apiError } from "../utils/apiError.js";
 import { apiResponse } from "../utils/apiResponse.js";
@@ -7,6 +7,130 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { User } from "../models/user.model.js";
 
 
+const getAllVideosByOption = asyncHandler(async (req, res) => {
+    const {
+        page = 1,
+        limit = 10,
+        search = "",
+        sortBy,
+        sortType = "video",
+        order,
+        userId,
+    } = req.query;
+    // filter video by given filters
+    let filters = { isPublished: true };
+    if (isValidObjectId(userId)) {
+        filters.owner = new Mongoose.Types.ObjectId(userId);
+    }
+
+    let pipeline = [
+        {
+            $match: {
+                ...filters,
+            }
+        }
+    ]
+
+    const sort = {};
+
+    // if query is given filter the videos
+    if (search) {
+        const queryWords = search.trim().toLowerCase().replace(/\s+/g, " ").split(" ");
+        const filteredWords = queryWords.filter((word) => !stopWords.includes(word));
+
+        console.log("Search is :", search);
+        console.log("filteredWords: ", filteredWords);
+
+        pipeline.push({
+            $addFields: {
+                titleMatchWordCount: {
+                    $size: {
+                        $filter: {
+                            input: filteredWords,
+                            as: "word",
+                            cond: {
+                                $in: ["$$word", { $split: [{ $toLower: "$title" }, " "] }],
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+        pipeline.push({
+            $addFields: {
+                descriptionMatchWordCount: {
+                    $size: {
+                        $filter: {
+                            input: filteredWords,
+                            as: "word",
+                            cond: {
+                                $in: [
+                                    "$$word",
+                                    { $split: [{ $toLower: "$description" }, " "] }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        sort.titleMatchWordCount = -1;
+    }
+
+    // sort the documents
+    if (sortBy) {
+        sort[sortBy] = parseInt(order);
+    } else if (!search && !sortBy) {
+        sort["createdAt"] = -1
+    }
+
+    pipeline.push({
+        $sort: {
+            ...sort,
+        }
+    });
+
+    // fetch owner detail
+    pipeline.push(
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner",
+                pipeline: [
+                    {
+                        $project: {
+                            username: 1,
+                            fullName: 1,
+                            avatar: 1,
+                        },
+                    },
+                ],
+            },
+        },
+        {
+            $unwind: "$owner",
+        }
+    );
+
+    const videoAggregate = Video.aggregate(pipeline);
+
+    const options = {
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+    }
+
+    const allVideos = await Video.aggregatePaginate(videoAggregate, options);
+
+    const { docs, ... pagingInfo} = allVideos
+    return res
+    .status(200)
+    .json(
+        new apiResponse(200, {videos: docs, pagingInfo}, "All Query Videos Sent Successfully")
+    )
+})
 
 const getAllVideos = asyncHandler(async (req, res) => {
     const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
@@ -115,6 +239,9 @@ const getVideoById = asyncHandler(async (req, res) => {
 
     //TODO: get video by id
     const video = await Video.findById(videoId);
+    if (!video) {
+        throw new apiError(404, "Video not found")
+    }
 
     return res
         .status(200)
@@ -209,4 +336,4 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
 })
 
-export { getAllVideos, publishAVideo, getVideoById, updateVideo, deleteVideo, togglePublishStatus }
+export { getAllVideos, publishAVideo, getVideoById, updateVideo, deleteVideo, togglePublishStatus, getAllVideosByOption }

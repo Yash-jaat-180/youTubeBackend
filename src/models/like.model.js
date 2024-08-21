@@ -3,6 +3,10 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 const likeSchema = new Schema(
     {
+        liked: {
+            type: Boolean,
+            default: true,
+        },
         comment: {
             type: Schema.Types.ObjectId,
             ref: 'Comment'
