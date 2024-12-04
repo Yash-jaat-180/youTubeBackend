@@ -14,12 +14,15 @@ app.use(express.json({
     limit: "16kb"
 }))
 
+// When data comes from the url
 app.use(express.urlencoded({
     extended: true, 
     limit: "16kb"
 }))
 
+// to store the file in public folder  
 app.use(express.static("public"))
+// to access the cokkie of user browser from my server and set the cookies
 app.use(cookieParser())
 
 
@@ -34,6 +37,7 @@ import tweetRouter from './routes/tweet.routes.js'
 import likeRouter from './routes/like.routes.js'
 import healthcheckRouter from './routes/healthCheck.routes.js'
 import dashboardRouter from './routes/dashboard.routes.js'
+import aboutRouter from './routes/about.routes.js'
 
 // routes declarations
 app.use("/api/v1/users", userRouter)
@@ -47,6 +51,6 @@ app.use("/api/v1/tweets", tweetRouter)
 app.use("/api/v1/likes", likeRouter)
 app.use("/api/v1/healthcheck", healthcheckRouter)
 app.use("/api/v1/dashboard", dashboardRouter)
-
+app.use("/api/v1/about/user/", aboutRouter)
 
 export { app }

@@ -5,6 +5,7 @@ import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { User } from "../models/user.model.js";
+import { stopWords } from "../utils/helperData.js";
 
 
 const getAllVideosByOption = asyncHandler(async (req, res) => {
@@ -124,73 +125,65 @@ const getAllVideosByOption = asyncHandler(async (req, res) => {
 
     const allVideos = await Video.aggregatePaginate(videoAggregate, options);
 
-    const { docs, ... pagingInfo} = allVideos
+    console.log(allVideos)
+    const { docs, ...pagingInfo } = allVideos
     return res
-    .status(200)
-    .json(
-        new apiResponse(200, {videos: docs, pagingInfo}, "All Query Videos Sent Successfully")
-    )
+        .status(200)
+        .json(
+            new apiResponse(200, { videos: docs, pagingInfo }, "All Query Videos Sent Successfully")
+        )
 })
 
 const getAllVideos = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
-    //TODO: get all videos based on query, sort, pagination
-    if (!userId && !isValidObjectId(userId)) {
-        throw new apiError(400, "Invalid user id")
-    }
+    const { userId } = req.query;
 
-    if (!query && !sortBy && !sortType) {
-        throw new apiError(400, "All fields are required")
-    }
+    let filters = { isPublished: true };
+    if (isValidObjectId(userId))
+        filters.owner = new mongoose.Types.ObjectId(userId);
 
-    const user = await User.findById(userId)
-
-    if (!user) {
-        throw new apiError(400, "User not found")
-    }
-
-    let options = {
-        page,
-        limit
-    }
-
-    let sortOptions = {}
-
-    if (sortBy) {
-        sortOptions[sortBy] = sortType === 'desc' ? -1 : 1 // sortOptions= {title: -1}
-    }
-
-    const videoPipeline = Video.aggregate([
+    let pipeline = [
         {
             $match: {
-                $and: [
+                ...filters,
+            },
+        },
+    ];
+
+    pipeline.push({
+        $sort: {
+            createdAt: -1,
+        },
+    });
+
+    pipeline.push(
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner",
+                pipeline: [
                     {
-                        owner: new mongoose.Types.ObjectId(userId)
+                        $project: {
+                            username: 1,
+                            fullName: 1,
+                            avatar: 1,
+                        },
                     },
-                    {
-                        title: {
-                            $regex: query,
-                            $options: "i",
-                        }
-                    }
-                ]
-            }
+                ],
+            },
         },
         {
-            $sort: sortOptions
+            $unwind: "$owner",
         }
+    );
 
-    ])
-    const resultVideos = await Video.aggregatePaginate(videoPipeline, options)
-
-    if (resultVideos.totalDocs === 0) {
-        return res.status(200).json(new apiResponse(200, {}, "user has no video"));
-    }
+    const allVideos = await Video.aggregate(Array.from(pipeline));
 
     return res
         .status(200)
-        .json(new apiResponse(200, resultVideos, "video fetched successfully"));
-})
+        .json(new apiResponse(200, allVideos, "all videos sent"));
+});
 
 const publishAVideo = asyncHandler(async (req, res) => {
     const { title, description } = req.body
@@ -234,20 +227,152 @@ const publishAVideo = asyncHandler(async (req, res) => {
 })
 
 const getVideoById = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
+    const { videoId } = req.params;
 
-
-    //TODO: get video by id
-    const video = await Video.findById(videoId);
-    if (!video) {
-        throw new apiError(404, "Video not found")
+    if (!isValidObjectId(videoId)) {
+        throw new apiError(400, "Invalid video id");
     }
+
+    const video = await Video.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(videoId),
+                isPublished: true,
+            },
+        },
+        // get all likes array
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "likes",
+                pipeline: [
+                    {
+                        $match: {
+                            liked: true,
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: "$liked",
+                            likeOwners: { $push: "$likedBy" },
+                        },
+                    },
+                ],
+            },
+        },
+        // get all dislikes array
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "dislikes",
+                pipeline: [
+                    {
+                        $match: {
+                            liked: false,
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: "$liked",
+                            dislikeOwners: { $push: "$likedBy" },
+                        },
+                    },
+                ],
+            },
+        },
+        // adjust shapes of likes and dislikes
+        {
+            $addFields: {
+                likes: {
+                    $cond: {
+                        if: {
+                            $gt: [{ $size: "$likes" }, 0],
+                        },
+                        then: { $first: "$likes.likeOwners" },
+                        else: [],
+                    },
+                },
+                dislikes: {
+                    $cond: {
+                        if: {
+                            $gt: [{ $size: "$dislikes" }, 0],
+                        },
+                        then: { $first: "$dislikes.dislikeOwners" },
+                        else: [],
+                    },
+                },
+            },
+        },
+        // fetch owner details
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner",
+                pipeline: [
+                    {
+                        $project: {
+                            username: 1,
+                            fullName: 1,
+                            avatar: 1,
+                        },
+                    },
+                ],
+            },
+        },
+        {
+            $unwind: "$owner",
+        },
+        // added like fields
+        {
+            $project: {
+                videoFile: 1,
+                title: 1,
+                description: 1,
+                duration: 1,
+                thumbnail: 1,
+                views: 1,
+                owner: 1,
+                createdAt: 1,
+                updatedAt: 1,
+                totalLikes: {
+                    $size: "$likes",
+                },
+                totalDisLikes: {
+                    $size: "$dislikes",
+                },
+                isLiked: {
+                    $cond: {
+                        if: {
+                            $in: [req.user?._id, "$likes"],
+                        },
+                        then: true,
+                        else: false,
+                    },
+                },
+                isDisLiked: {
+                    $cond: {
+                        if: {
+                            $in: [req.user?._id, "$dislikes"],
+                        },
+                        then: true,
+                        else: false,
+                    },
+                },
+            },
+        },
+    ]);
+
+    if (!video.length > 0) throw new apiError(400, "No video found");
 
     return res
         .status(200)
-        .json(
-            new apiResponse(200, video, "Get video successfuly")
-        );
+        .json(new apiResponse(200, video[0], "Video sent successfully"));
 })
 
 const updateVideo = asyncHandler(async (req, res) => {
@@ -306,34 +431,65 @@ const deleteVideo = asyncHandler(async (req, res) => {
 })
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
-    const { videoId } = req.params
+    const { videoId } = req.params;
+    if (!videoId) throw new apiError(400, "videoId required");
 
-    if (!videoId) {
-        throw new apiError(400, "video not found")
-    }
+    const video = await Video.findById(videoId);
+    if (!video) throw new apiError(400, "Video not found");
 
-    const video = await Video.findById(videoId)
+    video.isPublished = !video.isPublished;
+    const updatedVideo = await video.save();
 
-
-    if (!video) {
-        throw new apiError(400, "video don't exist");
-    }
-
-    if (video.isPublished) {
-        video.isPublished = false
-    }
-    else {
-        video.isPublished = true
-    }
-
-    await video.save({ validateBeforeSave: false })
+    if (!updatedVideo) throw new apiError(400, "Failed to toggle publish status");
 
     return res
         .status(200)
         .json(
-            new apiResponse(200, video, "toggle publish status successfully")
-        )
+            new apiResponse(
+                200,
+                { isPublished: updatedVideo.isPublished },
+                "Video publishStatus toggled successfully"
+            )
+        );
+});
 
-})
 
-export { getAllVideos, publishAVideo, getVideoById, updateVideo, deleteVideo, togglePublishStatus, getAllVideosByOption }
+
+const updateView = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+    if (!isValidObjectId(videoId)) throw new apiError(400, "videoId required");
+
+    const video = await Video.findById(videoId);
+    if (!video) throw new apiError(400, "Video not found");
+
+    video.views += 1;
+    const updatedVideo = await video.save();
+    if (!updatedVideo) throw new apiError(400, "Error occurred on updating view");
+
+    let watchHistory;
+    if (req.user) {
+        watchHistory = await User.findByIdAndUpdate(
+            req.user?._id,
+            {
+                $push: {
+                    watchHistory: new mongoose.Types.ObjectId(videoId),
+                },
+            },
+            {
+                new: true,
+            }
+        );
+    }
+
+    return res
+        .status(200)
+        .json(
+            new apiResponse(
+                200,
+                { isSuccess: true, views: updatedVideo.views, watchHistory },
+                "Video views updated successfully"
+            )
+        );
+});
+
+export { getAllVideos, publishAVideo, getVideoById, updateVideo, deleteVideo, togglePublishStatus, getAllVideosByOption, updateView }

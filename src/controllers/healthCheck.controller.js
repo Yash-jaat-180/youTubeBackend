@@ -7,7 +7,7 @@ const healthcheck = asyncHandler(async (req, res) => {
     return res
     .status(200)
     .json(
-        new apiResponse(200, {}, "System is healthy")
+        new apiResponse(200, {status: "Ok"}, "System is healthy")
     )
 })
 

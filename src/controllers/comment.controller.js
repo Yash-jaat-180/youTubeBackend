@@ -6,36 +6,31 @@ import { apiResponse } from "../utils/apiResponse.js"
 import { Video } from "../models/video.model.js"
 
 const getVideoComments = asyncHandler(async (req, res) => {
-    //TODO: get all comments for a video
-    const { videoId } = req.params
-    const { page = 1, limit = 10 } = req.query
+    const { videoId } = req.params;
+    const { page = 1, limit = 10 } = req.query;
 
-    if (!videoId && !isValidObjectId(videoId)) {
-        throw new apiError(400, "Video id required")
-    }
-
-    const video = await Video.findById(videoId)
-    if (!video) {
-        throw new apiError(400, "Video not found")
-    }
+    if (!isValidObjectId(videoId)) throw new apiError(400, "Invalid VideoId");
 
     const options = {
         page,
-        limit
-    }
+        limit,
+    };
 
-    const comments = Comment.aggregate([
+    const video = await Video.findById(videoId);
+
+    const allComments = await Comment.aggregate([
         {
             $match: {
-                video: new mongoose.Types.ObjectId(videoId)
-            }
+                video: new mongoose.Types.ObjectId(videoId),
+            },
         },
-        {// short by date
+        // sort by date
+        {
             $sort: {
-                createdAt: -1
-            }
+                createdAt: -1,
+            },
         },
-        // fetch likes of comment
+        // fetch likes of Comment
         {
             $lookup: {
                 from: "likes",
@@ -45,17 +40,17 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 pipeline: [
                     {
                         $match: {
-                            liked: true
-                        }
+                            liked: true,
+                        },
                     },
                     {
                         $group: {
                             _id: "liked",
-                            owners: { $push: "$likedBy" }
-                        }
-                    }
-                ]
-            }
+                            owners: { $push: "$likedBy" },
+                        },
+                    },
+                ],
+            },
         },
         {
             $lookup: {
@@ -78,7 +73,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 ],
             },
         },
-        // Reshape likes and dislikes
+        // Reshape Likes and dislikes
         {
             $addFields: {
                 likes: {
@@ -101,6 +96,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 },
             },
         },
+        // get owner details
         {
             $lookup: {
                 from: "users",
@@ -117,7 +113,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
                         },
                     },
                 ],
-            }
+            },
         },
         { $unwind: "$owner" },
         {
@@ -166,52 +162,15 @@ const getVideoComments = asyncHandler(async (req, res) => {
                         else: false,
                     },
                 },
-            }
-        }
-
+            },
+        },
     ]);
 
-    if (!comments && !comments.length === 0) {
-        throw new apiError(400, "video has no comments")
-    }
+    return res
+        .status(200)
+        .json(new apiResponse(200, allComments, "All comments Sent"));
 
-
-    Comment.aggregatePaginate(comments, options, function (err, results) {
-        console.log("results", results);
-        if (!err) {
-            const {
-                docs,
-                totalDocs,
-                limit,
-                page,
-                totalPages,
-                pagingCounter,
-                hasPrevPage,
-                hasNextPage,
-                prevPage,
-                nextPage,
-            } = results;
-
-            return res.status(200).json(
-                new apiResponse(
-                    200,
-                    {
-                        Comments: docs,
-                        totalDocs,
-                        limit,
-                        page,
-                        totalPages,
-                        pagingCounter,
-                        hasPrevPage,
-                        hasNextPage,
-                        prevPage,
-                        nextPage,
-                    },
-                    "Comments fetched successfully"
-                )
-            );
-        } else throw new apiError(500, err.message);
-    });
+    
 })
 
 const addComment = asyncHandler(async (req, res) => {
