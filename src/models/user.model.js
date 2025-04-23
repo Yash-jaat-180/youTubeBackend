@@ -10,7 +10,7 @@ const userSchema = new Schema(
             unique: true,
             lowercase: true,
             trim: true,
-            index: true // if wantt to enable searching field in database
+            index: true // if want to enable searching field in database
         },
         email: {
             type: String,

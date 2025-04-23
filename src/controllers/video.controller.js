@@ -39,8 +39,6 @@ const getAllVideosByOption = asyncHandler(async (req, res) => {
         const queryWords = search.trim().toLowerCase().replace(/\s+/g, " ").split(" ");
         const filteredWords = queryWords.filter((word) => !stopWords.includes(word));
 
-        console.log("Search is :", search);
-        console.log("filteredWords: ", filteredWords);
 
         pipeline.push({
             $addFields: {
@@ -125,7 +123,6 @@ const getAllVideosByOption = asyncHandler(async (req, res) => {
 
     const allVideos = await Video.aggregatePaginate(videoAggregate, options);
 
-    console.log(allVideos)
     const { docs, ...pagingInfo } = allVideos
     return res
         .status(200)
@@ -192,6 +189,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
         throw new apiError(400, "title and description are required");
     }
 
+    
     console.log(req.files);
     const videoFileLocalPath = req.files?.videoFile[0]?.path;
     const thumbnailLocalPath = req.files?.thumbnail[0]?.path;

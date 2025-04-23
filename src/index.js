@@ -7,7 +7,6 @@ dotenv.config({
     path: './env'
 })
 
-
 connectDB()
 .then(() => {
     app.on("err", (error) => {
