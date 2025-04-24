@@ -11,10 +11,16 @@ export const verifyJWT = asyncHandler(async(req, /*res*/_, next) => {
     try {
         const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")  // Because of cookie parser used in app.js. req have access of cookie
         // const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
+        
         if(!token) {
             throw new apiError(401, "Unauthorized request could'nt get token");
         }
+        console.log(token);
         const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
+
+        if(!decodedToken){
+            throw new apiError(401, "Invalid access Token");
+        }
     
         const user = await User.findById(decodedToken?._id).select("-password -refreshToken")
     

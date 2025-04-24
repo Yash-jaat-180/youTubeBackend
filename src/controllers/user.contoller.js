@@ -132,10 +132,10 @@ const loginUser = asyncHandler(async (req, res) => {
 
     // Now send cookies
     // cookie can be modified by the frontend 
-    const options = {// Here we can modified the cookie through server only
-        httpOnly: true,
-        secure: true
-    }
+    // const options = {// Here we can modified the cookie through server only
+    //     httpOnly: true,
+    //     secure: true
+    // }
 
     res.setHeader(
         "Set-Cookie",
