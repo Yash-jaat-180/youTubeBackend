@@ -137,10 +137,13 @@ const loginUser = asyncHandler(async (req, res) => {
         secure: true
     }
 
+    res.setHeader(
+        "Set-Cookie",
+        `accessToken=${accessToken}; Max-Age=${1 * 24 * 60 * 60 * 1000}; Path=/; HttpOnly; SameSite=None; Secure; Partitioned`
+    );
+
     return res
         .status(200)
-        .cookie("accessToken", accessToken, options)
-        .cookie("refreshToken", refreshToken, options)
         .json(
             new apiResponse(
                 200,
